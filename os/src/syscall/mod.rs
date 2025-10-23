@@ -11,15 +11,15 @@
 //! submodules, and you should also implement syscalls this way.
 
 /// write syscall
-const SYSCALL_WRITE: usize = 64;
+pub const SYSCALL_WRITE: usize = 64;
 /// exit syscall
-const SYSCALL_EXIT: usize = 93;
+pub const SYSCALL_EXIT: usize = 93;
 /// yield syscall
-const SYSCALL_YIELD: usize = 124;
+pub const SYSCALL_YIELD: usize = 124;
 /// gettime syscall
-const SYSCALL_GET_TIME: usize = 169;
+pub const SYSCALL_GET_TIME: usize = 169;
 /// trace syscall
-const SYSCALL_TRACE: usize = 410;
+pub const SYSCALL_TRACE: usize = 410;
 
 mod fs;
 mod process;
