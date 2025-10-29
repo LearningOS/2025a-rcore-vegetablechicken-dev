@@ -153,6 +153,22 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    /// Get syscall count by id
+    fn get_syscall_count(&self, id: usize) -> isize {
+        let inner = self.inner.exclusive_access();
+        let value = inner.tasks[inner.current_task].syscall_count.get(&id);
+        match value {
+            Some(v) => *v,
+            None => 0,
+        }
+    }
+    /// Syscall Count plus one
+    fn add_syscall_count(&self, id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].syscall_count
+            .entry(id).and_modify(|v| *v += 1).or_insert(1);
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +217,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Get syscall count by syscall_id
+pub fn get_syscall_count(id: usize) -> isize {
+    TASK_MANAGER.get_syscall_count(id)
+}
+
+/// Syscall Count plus one
+pub fn add_syscall_count(id: usize) {
+    TASK_MANAGER.add_syscall_count(id);
 }

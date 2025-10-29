@@ -1,6 +1,6 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
+use super::{frame_alloc, FrameTracker, PhysPageNum, PhysAddr, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
@@ -178,4 +178,31 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+/// Translate&Return an immutable u8 ptr through page table
+/// The ptr is often used to read
+pub fn translated_const_ptr(token: usize, ptr: usize) -> Option<usize>{
+    let page_table = PageTable::from_token(token);
+    let p = page_table.translate(VirtAddr::from(ptr).floor());
+    let Some(pte) = p else {
+        return None;
+    };
+    if !pte.readable() {
+        return None;
+    }
+    Some(PhysAddr::from(pte.ppn()).0)
+}
+
+/// Translate&Return a mutable u8 ptr through page table
+/// The ptr is often used to write
+pub fn translated_mut_ptr(token: usize, ptr: usize) -> Option<*mut u8> {
+    let page_table = PageTable::from_token(token);
+    let p = page_table.translate(VirtAddr::from(ptr).floor());
+    let Some(pte) = p else {
+        return None;
+    };
+    if !pte.writable() {
+        return None;
+    }
+    Some(PhysAddr::from(pte.ppn()).get_mut())
 }
