@@ -7,7 +7,7 @@
 //! Every task or process has a memory_set to control its virtual memory.
 
 pub mod address;
-mod frame_allocator;
+pub mod frame_allocator;
 mod heap_allocator;
 mod memory_set;
 pub mod page_table;

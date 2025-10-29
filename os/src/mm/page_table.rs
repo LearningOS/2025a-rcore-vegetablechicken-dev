@@ -54,6 +54,10 @@ impl PageTableEntry {
     pub fn flags(&self) -> PTEFlags {
         PTEFlags::from_bits(self.bits as u8).unwrap()
     }
+    /// The page pointered by page table allows user
+    pub fn is_user_allowed(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty()
+    }
     /// The page pointered by page table entry is valid?
     pub fn is_valid(&self) -> bool {
         (self.flags() & PTEFlags::V) != PTEFlags::empty()
@@ -183,26 +187,30 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
 /// The ptr is often used to read
 pub fn translated_const_ptr(token: usize, ptr: usize) -> Option<usize>{
     let page_table = PageTable::from_token(token);
-    let p = page_table.translate(VirtAddr::from(ptr).floor());
+    let va = VirtAddr::from(ptr);
+    let p = page_table.translate(va.floor());
     let Some(pte) = p else {
         return None;
     };
-    if !pte.readable() {
+    if !pte.readable() || !pte.is_user_allowed() {
         return None;
     }
-    Some(PhysAddr::from(pte.ppn()).0)
+    let pa = PhysAddr::from(pte.ppn()).0;
+    Some(pa + va.page_offset())
 }
 
 /// Translate&Return a mutable u8 ptr through page table
 /// The ptr is often used to write
-pub fn translated_mut_ptr(token: usize, ptr: usize) -> Option<*mut u8> {
+pub fn translated_mut_ptr(token: usize, ptr: usize) -> Option<usize> {
     let page_table = PageTable::from_token(token);
-    let p = page_table.translate(VirtAddr::from(ptr).floor());
+    let va = VirtAddr::from(ptr);
+    let p = page_table.translate(va.floor());
     let Some(pte) = p else {
         return None;
     };
-    if !pte.writable() {
+    if !pte.writable() || !pte.is_user_allowed() {
         return None;
     }
-    Some(PhysAddr::from(pte.ppn()).get_mut())
+    let pa = PhysAddr::from(pte.ppn()).0;
+    Some(pa + va.page_offset())
 }

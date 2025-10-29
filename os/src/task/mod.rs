@@ -17,6 +17,9 @@ mod task;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use crate::mm::{frame_allocator, address::{VirtAddr},
+                page_table::{PageTable, PTEFlags}};
+use crate::config::PAGE_SIZE;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
@@ -169,6 +172,29 @@ impl TaskManager {
         inner.tasks[cur].syscall_count
             .entry(id).and_modify(|v| *v += 1).or_insert(1);
     }
+    /// Alloc memory for the current task
+    fn mmap(&self, start: usize, len: usize, prot: usize) -> isize {
+        let mut page_table = PageTable::from_token(current_user_token());
+        let mut cur = start;
+        let end = start + len;
+        while cur < end {
+            let start_va = VirtAddr::from(cur);
+            let vpn = start_va.floor();
+            // Find an alloced page
+            if let Some(_) = page_table.translate(vpn) {
+                return -1;
+            }
+            // Alloc failed
+            let Some(frame_tracker) = frame_allocator::frame_alloc() else {
+                return -1;
+            };
+            let prot = PTEFlags::from_bits((prot << 1) as u8).unwrap() | PTEFlags::V
+                                                                    | PTEFlags::U;
+            page_table.map(vpn, frame_tracker.ppn, prot);
+            cur += PAGE_SIZE;
+        }
+        0
+    }
 }
 
 /// Run the first task in task list.
@@ -227,4 +253,9 @@ pub fn get_syscall_count(id: usize) -> isize {
 /// Syscall Count plus one
 pub fn add_syscall_count(id: usize) {
     TASK_MANAGER.add_syscall_count(id);
+}
+
+/// Alloc memory
+pub fn mmap(start: usize, len: usize, prot: usize) -> isize {
+    TASK_MANAGER.mmap(start, len, prot)
 }

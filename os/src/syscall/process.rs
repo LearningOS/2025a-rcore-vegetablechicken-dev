@@ -1,7 +1,7 @@
 //! Process management syscalls
 use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next
-                , current_user_token, get_syscall_count};
-use crate::mm::{page_table};
+                , current_user_token, get_syscall_count, mmap};
+use crate::mm::{page_table, address::{VirtAddr}};
 use crate::timer::get_time_us;
 
 use core::mem::size_of;
@@ -72,7 +72,7 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     } else if trace_request == 1 {
         let ptr = page_table::translated_mut_ptr(current_user_token(), id);
         ret = match ptr {
-            Some(p) => { unsafe { *p = data as u8 }; 0 },
+            Some(p) => { unsafe { *(p as *mut u8) = data as u8 }; 0 },
             None => -1
         }
     } else if trace_request == 2 {
@@ -82,10 +82,15 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-
-    -1
+    if prot & 0x7 == 0 || prot & !0x7 != 0 {
+        return -1;
+    }
+    if !VirtAddr::from(start).aligned() {
+        return -1;
+    }
+    mmap(start, len, prot)
 }
 
 // YOUR JOB: Implement munmap.
