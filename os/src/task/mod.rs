@@ -17,8 +17,8 @@ mod task;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
-use crate::mm::{frame_allocator, address::{VirtAddr},
-                page_table::{PageTable, PTEFlags}};
+use crate::mm::{address::{VirtAddr}, page_table::PageTable,
+                memory_set::MapPermission};
 use crate::config::PAGE_SIZE;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -174,26 +174,31 @@ impl TaskManager {
     }
     /// Alloc memory for the current task
     fn mmap(&self, start: usize, len: usize, prot: usize) -> isize {
-        let mut page_table = PageTable::from_token(current_user_token());
+        let page_table = PageTable::from_token(current_user_token());
         let mut cur = start;
         let end = start + len;
         while cur < end {
-            let start_va = VirtAddr::from(cur);
-            let vpn = start_va.floor();
+            let vpn = VirtAddr::from(cur).floor();
             // Find an alloced page
             if let Some(_) = page_table.translate(vpn) {
                 return -1;
             }
-            // Alloc failed
-            let Some(frame_tracker) = frame_allocator::frame_alloc() else {
-                return -1;
-            };
-            let prot = PTEFlags::from_bits((prot << 1) as u8).unwrap() | PTEFlags::V
-                                                                    | PTEFlags::U;
-            page_table.map(vpn, frame_tracker.ppn, prot);
             cur += PAGE_SIZE;
         }
+        // Alloc a section
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(VirtAddr::from(end).ceil());
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        let map_per = MapPermission::from_bits((prot << 1) as u8).unwrap()
+                    | MapPermission::U;
+        inner.tasks[current_task].memory_set.insert_framed_area(start_va, end_va, map_per);
         0
+    }
+    /// Dealloc memory for current task
+    fn munmap(&self, _start: usize, _len: usize) -> isize {
+
+        -1
     }
 }
 
@@ -258,4 +263,8 @@ pub fn add_syscall_count(id: usize) {
 /// Alloc memory
 pub fn mmap(start: usize, len: usize, prot: usize) -> isize {
     TASK_MANAGER.mmap(start, len, prot)
+}
+/// Dealloc memory
+pub fn munmap(start: usize, len: usize) -> isize {
+    TASK_MANAGER.munmap(start, len)
 }
