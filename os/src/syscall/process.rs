@@ -83,7 +83,7 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
 
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    trace!("kernel: sys_mmap");
     if prot & 0x7 == 0 || prot & !0x7 != 0 {
         return -1;
     }
@@ -95,9 +95,11 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(start: usize, len: usize) -> isize {
-    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
+    trace!("kernel: sys_munmap");
+    if !VirtAddr::from(start).aligned() {
+        return -1;
+    }
     munmap(start, len)
-    -1
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {

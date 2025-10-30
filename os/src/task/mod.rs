@@ -17,7 +17,7 @@ mod task;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
-use crate::mm::{address::{VirtAddr}, page_table::PageTable,
+use crate::mm::{address::{VirtAddr}, page_table::{PageTable, PTEFlags},
                 memory_set::MapPermission};
 use crate::config::PAGE_SIZE;
 use alloc::vec::Vec;
@@ -180,25 +180,41 @@ impl TaskManager {
         while cur < end {
             let vpn = VirtAddr::from(cur).floor();
             // Find an alloced page
-            if let Some(_) = page_table.translate(vpn) {
-                return -1;
+            if let Some(pte) = page_table.translate(vpn) {
+                if pte.is_valid() {
+                    return -1;
+                }
             }
             cur += PAGE_SIZE;
         }
         // Alloc a section
         let start_va = VirtAddr::from(start);
-        let end_va = VirtAddr::from(VirtAddr::from(end).ceil());
+        let end_va = VirtAddr::from(end);
         let mut inner = self.inner.exclusive_access();
         let current_task = inner.current_task;
-        let map_per = MapPermission::from_bits((prot << 1) as u8).unwrap()
+        let map_per = MapPermission::from_bits(((prot << 1)) as u8).unwrap()
                     | MapPermission::U;
         inner.tasks[current_task].memory_set.insert_framed_area(start_va, end_va, map_per);
         0
     }
     /// Dealloc memory for current task
-    fn munmap(&self, _start: usize, _len: usize) -> isize {
-
-        -1
+    fn munmap(&self, start: usize, len: usize) -> isize {
+        let mut page_table = PageTable::from_token(current_user_token());
+        let mut cur = start;
+        let end = start + len;
+        while cur < end {
+            let vpn = VirtAddr::from(cur).floor();
+            let Some(mut pte) = page_table.translate(vpn) else {
+                return -1;
+            };
+            if !pte.is_valid() && !pte.is_user_allowed() {
+                return -1;
+            }
+            pte.bits &= (!PTEFlags::V).bits() as usize ;
+            page_table.unmap(vpn);
+            cur += PAGE_SIZE;
+        }
+        0
     }
 }
 

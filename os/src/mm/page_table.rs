@@ -192,7 +192,7 @@ pub fn translated_const_ptr(token: usize, ptr: usize) -> Option<usize>{
     let Some(pte) = p else {
         return None;
     };
-    if !pte.readable() || !pte.is_user_allowed() {
+    if !pte.is_valid() || !pte.readable() || !pte.is_user_allowed() {
         return None;
     }
     let pa = PhysAddr::from(pte.ppn()).0;
@@ -208,7 +208,7 @@ pub fn translated_mut_ptr(token: usize, ptr: usize) -> Option<usize> {
     let Some(pte) = p else {
         return None;
     };
-    if !pte.writable() || !pte.is_user_allowed() {
+    if !pte.is_valid() || !pte.writable() || !pte.is_user_allowed() {
         return None;
     }
     let pa = PhysAddr::from(pte.ppn()).0;
