@@ -9,6 +9,13 @@ use crate::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next,
     },
+    timer::get_time_us,
+};
+
+use core::{
+    mem::size_of,
+    slice,
+    ptr,
 };
 
 #[repr(C)]
@@ -18,14 +25,16 @@ pub struct TimeVal {
     pub usec: usize,
 }
 
+/// task exits and submit an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
     trace!("kernel:pid[{}] sys_exit", current_task().unwrap().pid.0);
     exit_current_and_run_next(exit_code);
     panic!("Unreachable in sys_exit!");
 }
 
+/// current task gives up resources for other tasks
 pub fn sys_yield() -> isize {
-    //trace!("kernel: sys_yield");
+    trace!("kernel:pid[{}] sys_yield", current_task().unwrap().pid.0);
     suspend_current_and_run_next();
     0
 }
@@ -67,7 +76,7 @@ pub fn sys_exec(path: *const u8) -> isize {
 /// If there is not a child process whose pid is same as given, return -1.
 /// Else if there is a child process but it is still running, return -2.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
-    //trace!("kernel: sys_waitpid");
+    trace!("kernel::pid[{}] sys_waitpid [{}]", current_task().unwrap().pid.0, pid);
     let task = current_task().unwrap();
     // find a child process
 
@@ -102,15 +111,37 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     // ---- release current PCB automatically
 }
 
-/// YOUR JOB: get time with second and microsecond
-/// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+/// Get time with second and microsecond
+/// You might reimplement it with virtual memory management.
+/// What if [`TimeVal`] is splitted by two pages ?
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let time_val_size = size_of::<TimeVal>();
+    let buffers = translated_byte_buffer(current_user_token(),
+                                         ts as *const u8,
+                                         time_val_size);
+    let us = get_time_us();
+    let time_val = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    let mut cur = 0;
+    let time_slice = unsafe {
+        slice::from_raw_parts(&time_val as *const TimeVal as *const u8, time_val_size)
+    };
+    for buffer in buffers {
+        let write_len = buffer.len().min(time_slice.len() - cur);
+        unsafe {
+            ptr::copy(&time_slice[cur..] as *const _ as *const u8,
+                      buffer as *mut _ as *mut u8,
+                      write_len);
+        }
+        cur += write_len;
+    }
+    0
 }
 
 /// YOUR JOB: Implement mmap.
