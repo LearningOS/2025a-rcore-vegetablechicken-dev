@@ -3,11 +3,18 @@ use alloc::sync::Arc;
 
 use crate::{
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str, translated_byte_buffer},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next,
     },
+    timer::get_time_us,
+};
+
+use core::{
+    mem::size_of,
+    slice,
+    ptr,
 };
 
 #[repr(C)]
@@ -102,15 +109,37 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     // ---- release current PCB automatically
 }
 
-/// YOUR JOB: get time with second and microsecond
-/// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+/// Get time with second and microsecond
+/// You might reimplement it with virtual memory management.
+/// What if [`TimeVal`] is splitted by two pages ?
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let time_val_size = size_of::<TimeVal>();
+    let buffers = translated_byte_buffer(current_user_token(),
+                                         ts as *const u8,
+                                         time_val_size);
+    let us = get_time_us();
+    let time_val = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    let mut cur = 0;
+    let time_slice = unsafe {
+        slice::from_raw_parts(&time_val as *const TimeVal as *const u8, time_val_size)
+    };
+    for buffer in buffers {
+        let write_len = buffer.len().min(time_slice.len() - cur);
+        unsafe {
+            ptr::copy(&time_slice[cur..] as *const _ as *const u8,
+                      buffer as *mut _ as *mut u8,
+                      write_len);
+        }
+        cur += write_len;
+    }
+    0
 }
 
 /// YOUR JOB: Implement mmap.
