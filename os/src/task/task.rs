@@ -71,6 +71,12 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Task priority
+    pub priority: usize,
+
+    /// Task current stride
+    pub stride: usize,
 }
 
 impl TaskControlBlockInner {
@@ -103,6 +109,14 @@ impl TaskControlBlockInner {
     /// Dealloc memory for this task
     pub fn munmap(&mut self, start: usize, len: usize) -> isize {
         self.memory_set.munmap(start, len)
+    }
+    /// Get task priority
+    pub fn get_priority(&self) -> usize {
+        self.priority
+    }
+    /// Set task priority
+    pub fn set_priority(&mut self, priority: usize) {
+        self.priority = priority;
     }
 }
 
@@ -145,6 +159,10 @@ impl TaskControlBlock {
                     ],
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    // The init priority is 16
+                    // You can set priority after init.
+                    priority: 16,
+                    stride: 0,
                 })
             },
         };
@@ -226,6 +244,8 @@ impl TaskControlBlock {
                     fd_table: new_fd_table,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         });
