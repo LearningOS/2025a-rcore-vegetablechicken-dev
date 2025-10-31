@@ -112,6 +112,12 @@ pub fn current_task_munmap(start: usize, len: usize) -> isize {
     let mut inner = task.inner_exclusive_access();
     inner.munmap(start, len)
 }
+/// Set priority of the current task
+pub fn current_task_set_priority(priority: usize) {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.set_priority(priority);
+}
 
 ///Return to idle control flow for new scheduling
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
