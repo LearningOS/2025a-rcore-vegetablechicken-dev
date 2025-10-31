@@ -99,6 +99,19 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .inner_exclusive_access()
         .get_trap_cx()
 }
+/// Alloc memory for current task
+pub fn current_task_mmap(start: usize, len: usize, port: usize) -> isize {
+    let task = & *current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.mmap(start, len, port)
+}
+
+/// Dealloc memory for current task
+pub fn current_task_munmap(start: usize, len: usize) -> isize {
+    let task = & *current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.munmap(start, len)
+}
 
 ///Return to idle control flow for new scheduling
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {

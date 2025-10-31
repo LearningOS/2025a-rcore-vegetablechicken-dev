@@ -1,5 +1,4 @@
 //! Process management syscalls
-//!
 use alloc::sync::Arc;
 
 use crate::{
@@ -7,7 +6,7 @@ use crate::{
     mm::{translated_refmut, translated_str, translated_byte_buffer},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next,
+        suspend_current_and_run_next, current_task_mmap, current_task_munmap
     },
     timer::get_time_us,
 };
@@ -144,22 +143,31 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+/// Implement mmap.
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_mmap",
         current_task().unwrap().pid.0
     );
-    -1
+    if port & 0x7 == 0 || port & !0x7 != 0 {
+        return -1;
+    }
+    if !VirtAddr::from(start).aligned() {
+        return -1;
+    }
+    current_task_mmap(start, len, port)
 }
 
-/// YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
+/// Implement munmap.
+pub fn sys_munmap(start: usize, len: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_munmap",
         current_task().unwrap().pid.0
     );
-    -1
+    if !VirtAddr::from(start).aligned() {
+        return -1;
+    }
+    current_task_munmap(start, len)
 }
 
 /// change data segment size
