@@ -3,7 +3,7 @@ use alloc::sync::Arc;
 
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_refmut, translated_str, translated_byte_buffer},
+    mm::{translated_refmut, translated_str, translated_byte_buffer, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, current_task_mmap, current_task_munmap
