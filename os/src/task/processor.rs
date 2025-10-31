@@ -105,7 +105,12 @@ pub fn current_task_mmap(start: usize, len: usize, port: usize) -> isize {
     let mut inner = task.inner_exclusive_access();
     inner.mmap(start, len, port)
 }
-
+/// Set priority for current_task
+pub fn current_task_set_priority(prio: usize) {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.set_priority(prio);
+}
 /// Dealloc memory for current task
 pub fn current_task_munmap(start: usize, len: usize) -> isize {
     let task = & *current_task().unwrap();

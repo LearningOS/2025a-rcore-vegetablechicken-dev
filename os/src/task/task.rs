@@ -68,6 +68,9 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Task priority
+    pub priority: usize,
 }
 
 impl TaskControlBlockInner {
@@ -92,6 +95,14 @@ impl TaskControlBlockInner {
     /// Dealloc memory for this task
     pub fn munmap(&mut self, start: usize, len: usize) -> isize {
         self.memory_set.munmap(start, len)
+    }
+    /// Get task priority
+    pub fn get_priority(&self) -> usize {
+        self.priority
+    }
+    /// Set task priority
+    pub fn set_priority(&mut self, priority: usize) {
+        self.priority = priority;
     }
 }
 
@@ -126,6 +137,9 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    // The priority of init_proc is 0
+                    // You can set priority after init.
+                    priority: 0,
                 })
             },
         };
@@ -199,6 +213,7 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    priority: parent_inner.get_priority(),
                 })
             },
         });
@@ -219,6 +234,7 @@ impl TaskControlBlock {
         let child_tcb = Arc::new(Self::new(elf_data));
         // child add parent: child set current task as parent
         let mut child_inner = child_tcb.inner_exclusive_access();
+        child_inner.set_priority(self.inner_exclusive_access().get_priority());
         child_inner.parent = Some(Arc::downgrade(self));
         drop(child_inner);
         // add child to parent
