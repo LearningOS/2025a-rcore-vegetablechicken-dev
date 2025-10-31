@@ -90,6 +90,48 @@ impl MemorySet {
             PTEFlags::R | PTEFlags::X,
         );
     }
+    /// Alloc memory
+    pub fn mmap(&mut self, start: usize, len: usize, port: usize) -> isize {
+        let mut cur = start;
+        let end = start + len;
+        while cur < end {
+            let vpn = VirtAddr::from(cur).floor();
+            // Find an alloced page
+            if let Some(pte) = self.page_table.translate(vpn) {
+                if pte.is_valid() {
+                    return -1;
+                }
+            }
+            cur += PAGE_SIZE;
+        }
+        // Alloc a section
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(end);
+        let map_per = MapPermission::from_bits((port << 1) as u8).unwrap()
+                    | MapPermission::U;
+        self.insert_framed_area(start_va, end_va, map_per);
+        0
+    }
+
+    /// Dealloc memory
+    pub fn munmap(&mut self, start: usize, len: usize) -> isize {
+        let page_table = &mut self.page_table;
+        let mut cur = start;
+        let end = start + len;
+        while cur < end {
+            let vpn = VirtAddr::from(cur).floor();
+            let Some(mut pte) = page_table.translate(vpn) else {
+                return -1;
+            };
+            if !pte.is_valid() && !pte.is_user_allowed() {
+                return -1;
+            }
+            pte.bits &= (!PTEFlags::V).bits() as usize ;
+            page_table.unmap(vpn);
+            cur += PAGE_SIZE;
+        }
+        0
+    }
     /// Without kernel stacks.
     pub fn new_kernel() -> Self {
         let mut memory_set = Self::new_bare();
