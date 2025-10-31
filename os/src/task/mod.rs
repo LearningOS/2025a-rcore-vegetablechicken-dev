@@ -45,6 +45,10 @@ pub fn suspend_current_and_run_next() {
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
+    let priority = task_inner.get_priority();
+    if let Some(pass) = calculate_pass(priority) {
+        task_inner.stride = task_inner.stride.wrapping_add(pass);
+    }
     drop(task_inner);
     // ---- release current PCB
 
@@ -114,4 +118,16 @@ lazy_static! {
 ///Add init process to the manager
 pub fn add_initproc() {
     add_task(INITPROC.clone());
+}
+
+/// BigStride is used to calculate pass
+const BIG_STRIDE: usize = 1 << 12;
+
+/// Calc pass
+fn calculate_pass(priority: usize) -> Option<usize> {
+    if priority == 0 || priority > BIG_STRIDE {
+        None
+    } else {
+        Some(BIG_STRIDE / priority)
+    }
 }

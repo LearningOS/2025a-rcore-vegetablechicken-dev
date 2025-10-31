@@ -71,6 +71,9 @@ pub struct TaskControlBlockInner {
 
     /// Task priority
     pub priority: usize,
+
+    /// Task current stride
+    pub stride: usize,
 }
 
 impl TaskControlBlockInner {
@@ -137,9 +140,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
-                    // The priority of init_proc is 0
+                    // The init priority is 16
                     // You can set priority after init.
-                    priority: 0,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         };
@@ -213,7 +217,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
-                    priority: parent_inner.get_priority(),
+                    priority: 16,
+                    stride: 0,
                 })
             },
         });
@@ -234,7 +239,6 @@ impl TaskControlBlock {
         let child_tcb = Arc::new(Self::new(elf_data));
         // child add parent: child set current task as parent
         let mut child_inner = child_tcb.inner_exclusive_access();
-        child_inner.set_priority(self.inner_exclusive_access().get_priority());
         child_inner.parent = Some(Arc::downgrade(self));
         drop(child_inner);
         // add child to parent
