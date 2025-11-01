@@ -183,4 +183,32 @@ impl Inode {
         });
         block_cache_sync_all();
     }
+    /// Get disk inode id
+    pub fn get_inode_id(&self) -> u64 {
+        // Maybe it's not good enough?
+        let fs_mutex = Arc::clone(&self.fs);
+        let fs = fs_mutex.lock();
+        let id = fs.get_inode_id(self.block_id, self.block_offset);
+        id as u64
+    }
+    /// Get file type
+    pub fn get_mode(&self) -> i8 {
+        let is_file = self.read_disk_inode(|disk_inode| {
+            disk_inode.is_file()
+        });
+        let is_dir = self.read_disk_inode(|disk_inode| {
+            disk_inode.is_dir()
+        });
+        match (is_file, is_dir) {
+            (true, false) => 1,
+            (false, true) => 2,
+            (_, _) => 0,
+        }
+    }
+    /// Get the number of hard link to an inode
+    pub fn get_nlink(&self) -> u32 {
+        self.read_disk_inode(|disk_inode| {
+            disk_inode.get_nlink()
+        })
+    }
 }
