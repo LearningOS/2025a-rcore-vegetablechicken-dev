@@ -86,7 +86,7 @@ pub struct DiskInode {
     pub indirect1: u32,
     pub indirect2: u32,
     type_: DiskInodeType,
-    nlink: u32,
+    pub nlink: u32,
 }
 
 impl DiskInode {

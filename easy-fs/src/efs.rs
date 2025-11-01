@@ -122,6 +122,7 @@ impl EasyFileSystem {
         )
     }
     /// Get inode id with block_id and block_offset
+    /// The inverse operation of get_disk_inode_pos
     pub fn get_inode_id(&self, block_id: usize, block_offset: usize) -> u32 {
         let inode_size = core::mem::size_of::<DiskInode>();
         let inodes_per_block = (BLOCK_SZ / inode_size) as u32;

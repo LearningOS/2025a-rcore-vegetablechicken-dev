@@ -211,4 +211,31 @@ impl Inode {
             disk_inode.get_nlink()
         })
     }
+    /// Add nlink field of DiskInode
+    pub fn add_nlink_count(&self) {
+        self.modify_disk_inode(|disk_inode: &mut DiskInode| {
+            disk_inode.nlink += 1;
+        })
+    }
+    /// Set up a link
+    pub fn link(&self, new_path: &str, inode: Arc<Inode>) {
+        let id = inode.get_inode_id();
+        let mut fs = self.fs.lock();
+        self.modify_disk_inode(|root_inode| {
+            // append file in the dirent
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, root_inode, &mut fs);
+            // write dirent
+            let dirent = DirEntry::new(new_path, id as u32);
+            root_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+        inode.add_nlink_count();
+        // efs lock release here
+    }
 }
