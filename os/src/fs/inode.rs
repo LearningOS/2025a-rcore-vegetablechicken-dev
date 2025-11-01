@@ -132,7 +132,15 @@ pub fn link_at(old_path: &str, new_path: &str) -> isize {
     ROOT_INODE.link(new_path, inode);
     0
 }
-
+/// Unlink. If nlink is 0, delete inode
+pub fn unlink(path: &str) -> isize {
+    let Some(inode) = ROOT_INODE.find(path) else {
+        // File not found
+        return -1;
+    };
+    ROOT_INODE.unlink(path, inode);
+    0
+}
 impl File for OSInode {
     fn readable(&self) -> bool {
         self.readable

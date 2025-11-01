@@ -215,7 +215,13 @@ impl Inode {
     pub fn add_nlink_count(&self) {
         self.modify_disk_inode(|disk_inode: &mut DiskInode| {
             disk_inode.nlink += 1;
-        })
+        });
+    }
+    /// Sub nlink
+    pub fn sub_nlink_count(&self) {
+        self.modify_disk_inode(|disk_inode: &mut DiskInode| {
+            disk_inode.nlink -= 1;
+        });
     }
     /// Set up a link
     pub fn link(&self, new_path: &str, inode: Arc<Inode>) {
@@ -237,5 +243,32 @@ impl Inode {
         });
         inode.add_nlink_count();
         // efs lock release here
+    }
+    /// Unlink: Delete dir_entry.
+    /// NOT IMPLEMENTED: If there is no hard link, delete disk inode
+    pub fn unlink(&self, name: &str, inode: Arc<Inode>) {
+        let id = inode.get_inode_id();
+        inode.sub_nlink_count();
+        self.modify_disk_inode(|root_inode| {
+            // Find target dir entry
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            // temp dirent
+            let mut dirent = DirEntry::empty();
+            for i in 0..file_count {
+                assert_eq!(
+                root_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
+                DIRENT_SZ,
+            );
+                if dirent.name() == name {
+                    // Create an empty dirent to replace the old one
+                    let new_dirent = DirEntry::empty();
+                    root_inode.write_at(
+                        i * DIRENT_SZ,
+                        new_dirent.as_bytes(),
+                        &self.block_device,
+                    );
+                }
+            }
+        });
     }
 }
