@@ -49,6 +49,8 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    /// Is enabled deadlock test
+    pub enabled_deadlock_test: bool
 }
 
 impl ProcessControlBlockInner {
@@ -81,6 +83,14 @@ impl ProcessControlBlockInner {
     /// get a task with tid in this process
     pub fn get_task(&self, tid: usize) -> Arc<TaskControlBlock> {
         self.tasks[tid].as_ref().unwrap().clone()
+    }
+    /// get enabled_deadlock_test
+    pub fn get_enabled_deadlock_test(&self) -> bool {
+        self.enabled_deadlock_test
+    }
+    /// set enabled_deadlock_test
+    pub fn set_enabled_deadlock_test(&mut self, enabled: bool) {
+        self.enabled_deadlock_test = enabled;
     }
 }
 
@@ -119,6 +129,7 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    enabled_deadlock_test: false,
                 })
             },
         });
@@ -245,6 +256,7 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    enabled_deadlock_test: false,
                 })
             },
         });
