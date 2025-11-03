@@ -42,6 +42,7 @@ pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
     }
     tasks[new_task_tid] = Some(Arc::clone(&new_task));
     process_inner.init_sync_info();
+    // println!("vec_len -> {}", process_inner.semaphore_allocation.len());
     let new_task_trap_cx = new_task_inner.get_trap_cx();
     *new_task_trap_cx = TrapContext::app_init_context(
         entry,

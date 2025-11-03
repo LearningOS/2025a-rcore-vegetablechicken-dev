@@ -14,6 +14,7 @@ use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use core::iter;
 
 /// Process Control Block
 pub struct ProcessControlBlock {
@@ -59,13 +60,13 @@ pub struct ProcessControlBlockInner {
     /// mutex needed, size: task_num * mutex_num
     pub mutex_needed: Vec<Vec<bool>>,
     /// max semaphore: size: semaphore_num
-    pub semaphore_available: Vec<isize>,
+    pub semaphore_available: Vec<usize>,
     /// semaphore can be allocated, size: semaphore_num
-    pub semaphore_work: Vec<isize>,
+    pub semaphore_work: Vec<usize>,
     /// semaphore already allocated, size: task_num * semaphore_num
-    pub semaphore_allocation: Vec<Vec<isize>>,
+    pub semaphore_allocation: Vec<Vec<usize>>,
     /// semaphore needed, size: task_num * semaphore_num
-    pub semaphore_needed: Vec<Vec<isize>>,
+    pub semaphore_needed: Vec<Vec<usize>>,
     /// is task finished, size: task_num
     pub finished: Vec<bool>,
     /// waiting list of task
@@ -113,10 +114,18 @@ impl ProcessControlBlockInner {
     }
     /// Init mutex and semaphore info for a new task
     pub fn init_sync_info(&mut self) {
-        self.mutex_allocation.push(Vec::new());
-        self.mutex_needed.push(Vec::new());
-        self.semaphore_allocation.push(Vec::new());
-        self.semaphore_needed.push(Vec::new());
+        self.mutex_allocation.push(
+            iter::repeat(false).take(self.mutex_list.len()).collect::<Vec<bool>>()
+        );
+        self.mutex_needed.push(
+            iter::repeat(false).take(self.mutex_list.len()).collect::<Vec<bool>>()
+        );
+        self.semaphore_allocation.push(
+            iter::repeat(0).take(self.semaphore_list.len()).collect::<Vec<usize>>()
+        );
+        self.semaphore_needed.push(
+            iter::repeat(0).take(self.semaphore_list.len()).collect::<Vec<usize>>()
+        );
         self.finished.push(false);
     }
     /// Update mutex info while creating mutex
@@ -126,7 +135,7 @@ impl ProcessControlBlockInner {
         self.mutex_needed.iter_mut().for_each(|v| v.push(false));
     }
     /// Update semaphore info while creating
-    pub fn update_semaphore_info_while_creating(&mut self, count: isize) {
+    pub fn update_semaphore_info_while_creating(&mut self, count: usize) {
         self.semaphore_available.push(count);
         self.semaphore_work.push(count);
         self.semaphore_allocation.iter_mut().for_each(|v| v.push(0));
@@ -135,7 +144,7 @@ impl ProcessControlBlockInner {
     /// Mutex deadlock test
     /// true means no deadlock
     pub fn no_mutex_deadlock(&self, tid: usize) -> bool {
-        let mut allocated: Vec<bool> = core::iter::repeat(false)
+        let mut allocated: Vec<bool> = iter::repeat(false)
             .take(self.mutex_available.len())
             .collect();
         let mut waiting: Vec<usize> = self.waiting_list.iter()
@@ -181,7 +190,7 @@ impl ProcessControlBlockInner {
     }
     /// find a task to wake up
     pub fn wakeup_task_in_waiting_list(&mut self) {
-        let mut allocated: Vec<bool> = core::iter::repeat(false)
+        let mut allocated: Vec<bool> = iter::repeat(false)
             .take(self.mutex_available.len())
             .collect();
         let waiting: Vec<usize> = self.waiting_list.iter()
@@ -199,6 +208,75 @@ impl ProcessControlBlockInner {
             let mut can_remove = true;
             for (j, e) in self.mutex_needed[*val].iter().enumerate() {
                 if *e && allocated[j] {
+                    can_remove = false;
+                    break;
+                }
+            }
+            if can_remove {
+                need_to_remove = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = need_to_remove {
+            let tcb = self.waiting_list.remove(i);
+            wakeup_task(tcb);
+        }
+    }
+    /// Semaphore deadlock test
+    /// true means no deadlock
+    pub fn no_semaphore_deadlock(&self, tid: usize) -> bool {
+        let mut available = self.semaphore_available.clone();
+        let mut waiting: Vec<usize> = self.waiting_list.iter()
+            .map(|t| t.get_tid()).collect();
+        waiting.push(tid);
+        for val in waiting.iter() {
+            for (i, e) in self.semaphore_allocation[*val].iter().enumerate() {
+                available[i] -= *e;
+            }
+        }
+        loop {
+            let mut need_to_remove = None;
+            for (i, val) in waiting.iter().enumerate() {
+                let mut can_remove = true;
+                for (j, e) in self.semaphore_needed[*val].iter().enumerate() {
+                    if *e > available[j] {
+                        can_remove = false;
+                        break;
+                    }
+                }
+                if can_remove {
+                    need_to_remove = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = need_to_remove {
+                for (j, e) in self.semaphore_allocation[waiting[i]].iter().enumerate() {
+                    available[j] += *e;
+                }
+                waiting.remove(i);
+            } else {
+                return false;
+            }
+            if waiting.is_empty() {
+                return true;
+            }
+        }
+    }
+    /// find a task to wake up
+    pub fn wakeup_task_in_waiting_list_semaphore(&mut self) {
+        let mut available = self.semaphore_available.clone();
+        let waiting: Vec<usize> = self.waiting_list.iter()
+            .map(|t| t.get_tid()).collect();
+        for val in waiting.iter() {
+            for (i, e) in self.semaphore_allocation[*val].iter().enumerate() {
+                available[i] -= *e;
+            }
+        }
+        let mut need_to_remove = None;
+        for (i, val) in waiting.iter().enumerate() {
+            let mut can_remove = true;
+            for (j, e) in self.semaphore_needed[*val].iter().enumerate() {
+                if *e > available[j] {
                     can_remove = false;
                     break;
                 }
