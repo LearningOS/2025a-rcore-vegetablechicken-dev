@@ -1,7 +1,7 @@
 //! Implementation of  [`ProcessControlBlock`]
 
 use super::id::RecycleAllocator;
-use super::manager::insert_into_pid2process;
+use super::manager::{insert_into_pid2process, wakeup_task};
 use super::TaskControlBlock;
 use super::{add_task, SignalFlags};
 use super::{pid_alloc, PidHandle};
@@ -50,7 +50,26 @@ pub struct ProcessControlBlockInner {
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
     /// Is enabled deadlock test
-    pub enabled_deadlock_test: bool
+    pub enabled_deadlock_test: bool,
+    /// Mutex available, meanwhile work
+    /// true means the mutex is available, size: mutex_num
+    pub mutex_available: Vec<bool>,
+    /// mutex allocation, size: task_num * mutex_num
+    pub mutex_allocation: Vec<Vec<bool>>,
+    /// mutex needed, size: task_num * mutex_num
+    pub mutex_needed: Vec<Vec<bool>>,
+    /// max semaphore: size: semaphore_num
+    pub semaphore_available: Vec<isize>,
+    /// semaphore can be allocated, size: semaphore_num
+    pub semaphore_work: Vec<isize>,
+    /// semaphore already allocated, size: task_num * semaphore_num
+    pub semaphore_allocation: Vec<Vec<isize>>,
+    /// semaphore needed, size: task_num * semaphore_num
+    pub semaphore_needed: Vec<Vec<isize>>,
+    /// is task finished, size: task_num
+    pub finished: Vec<bool>,
+    /// waiting list of task
+    pub waiting_list: Vec<Arc<TaskControlBlock>>,
 }
 
 impl ProcessControlBlockInner {
@@ -92,6 +111,108 @@ impl ProcessControlBlockInner {
     pub fn set_enabled_deadlock_test(&mut self, enabled: bool) {
         self.enabled_deadlock_test = enabled;
     }
+    /// Init mutex and semaphore info for a new task
+    pub fn init_sync_info(&mut self) {
+        self.mutex_allocation.push(Vec::new());
+        self.mutex_needed.push(Vec::new());
+        self.semaphore_allocation.push(Vec::new());
+        self.semaphore_needed.push(Vec::new());
+        self.finished.push(false);
+    }
+    /// Update mutex info while creating mutex
+    pub fn update_mutex_info_while_creating(&mut self) {
+        self.mutex_available.push(true);
+        self.mutex_allocation.iter_mut().for_each(|v| v.push(false));
+        self.mutex_needed.iter_mut().for_each(|v| v.push(false));
+    }
+    /// Update semaphore info while creating
+    pub fn update_semaphore_info_while_creating(&mut self, count: isize) {
+        self.semaphore_available.push(count);
+        self.semaphore_work.push(count);
+        self.semaphore_allocation.iter_mut().for_each(|v| v.push(0));
+        self.semaphore_needed.iter_mut().for_each(|v| v.push(0));
+    }
+    /// Mutex deadlock test
+    /// true means no deadlock
+    pub fn no_mutex_deadlock(&self, tid: usize) -> bool {
+        let mut allocated: Vec<bool> = core::iter::repeat(false)
+            .take(self.mutex_available.len())
+            .collect();
+        let mut waiting: Vec<usize> = self.waiting_list.iter()
+            .map(|t| t.get_tid())
+            .collect();
+        waiting.push(tid);
+        for val in waiting.iter() {
+            for (i, e) in self.mutex_allocation[*val].iter().enumerate() {
+                if *e {
+                    allocated[i] = true;
+                }
+            }
+        }
+        loop {
+            let mut need_to_remove = None;
+            for (i, val) in waiting.iter().enumerate() {
+                let mut can_remove = true;
+                for (j, e) in self.mutex_needed[*val].iter().enumerate() {
+                    if *e && allocated[j] {
+                        can_remove = false;
+                        break;
+                    }
+                }
+                if can_remove {
+                    need_to_remove = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = need_to_remove {
+                for (j, e) in self.mutex_allocation[waiting[i]].iter().enumerate() {
+                    if *e {
+                        allocated[j] = false;
+                    }
+                }
+                waiting.remove(i);
+            } else {
+                return false;
+            }
+            if waiting.is_empty() {
+                return true;
+            }
+        }
+    }
+    /// find a task to wake up
+    pub fn wakeup_task_in_waiting_list(&mut self) {
+        let mut allocated: Vec<bool> = core::iter::repeat(false)
+            .take(self.mutex_available.len())
+            .collect();
+        let waiting: Vec<usize> = self.waiting_list.iter()
+            .map(|t| t.get_tid())
+            .collect();
+        for val in waiting.iter() {
+            for (i, e) in self.mutex_allocation[*val].iter().enumerate() {
+                if *e {
+                    allocated[i] = true;
+                }
+            }
+        }
+        let mut need_to_remove = None;
+        for (i, val) in waiting.iter().enumerate() {
+            let mut can_remove = true;
+            for (j, e) in self.mutex_needed[*val].iter().enumerate() {
+                if *e && allocated[j] {
+                    can_remove = false;
+                    break;
+                }
+            }
+            if can_remove {
+                need_to_remove = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = need_to_remove {
+            let tcb = self.waiting_list.remove(i);
+            wakeup_task(tcb);
+        }
+    }
 }
 
 impl ProcessControlBlock {
@@ -130,6 +251,15 @@ impl ProcessControlBlock {
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
                     enabled_deadlock_test: false,
+                    mutex_available: Vec::new(),
+                    mutex_allocation: Vec::new(),
+                    mutex_needed: Vec::new(),
+                    semaphore_available: Vec::new(),
+                    semaphore_work: Vec::new(),
+                    semaphore_allocation: Vec::new(),
+                    semaphore_needed: Vec::new(),
+                    finished: Vec::new(),
+                    waiting_list: Vec::new(),
                 })
             },
         });
@@ -155,6 +285,7 @@ impl ProcessControlBlock {
         // add main thread to the process
         let mut process_inner = process.inner_exclusive_access();
         process_inner.tasks.push(Some(Arc::clone(&task)));
+        process_inner.init_sync_info();
         drop(process_inner);
         insert_into_pid2process(process.getpid(), Arc::clone(&process));
         // add main thread to scheduler
@@ -257,6 +388,15 @@ impl ProcessControlBlock {
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
                     enabled_deadlock_test: false,
+                    mutex_available: Vec::new(),
+                    mutex_allocation: Vec::new(),
+                    mutex_needed: Vec::new(),
+                    semaphore_work: Vec::new(),
+                    semaphore_available: Vec::new(),
+                    semaphore_allocation: Vec::new(),
+                    semaphore_needed: Vec::new(),
+                    finished: Vec::new(),
+                    waiting_list: Vec::new(),
                 })
             },
         });
@@ -279,6 +419,7 @@ impl ProcessControlBlock {
         // attach task to child process
         let mut child_inner = child.inner_exclusive_access();
         child_inner.tasks.push(Some(Arc::clone(&task)));
+        child_inner.init_sync_info();
         drop(child_inner);
         // modify kstack_top in trap_cx of this thread
         let task_inner = task.inner_exclusive_access();
